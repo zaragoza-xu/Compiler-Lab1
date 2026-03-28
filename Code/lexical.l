@@ -50,7 +50,7 @@ static void set_float_token_node(const char *lexeme) {
 }
 
 int yycolumn = 1;
-
+int has_lexical_error = 0;
 int last_reported_error_line = -1;
 
 int mark_reported_error_line(int line) {
@@ -62,6 +62,7 @@ int mark_reported_error_line(int line) {
 }
 
 static void report_type_a_error(const char *kind, const char *text) {
+    has_lexical_error = 1;
     if (!mark_reported_error_line(yylineno)) {
         return;
     }
