@@ -8,7 +8,7 @@ void yyerror(const char *s);
 int yylex(void);
 extern char* yytext;
 extern int yylineno;
-static int last_b_error_line = -1;
+extern int mark_reported_error_line(int line);
 static int has_syntax_error = 0;
 extern int has_lexical_error;
 
@@ -578,8 +578,7 @@ void yyerror(const char *s) {
   if (line <= 0) {
     line = yylineno;
   }
-  if (line != last_b_error_line) {
+  if (mark_reported_error_line(line)) {
     fprintf(stdout, "Error type B at Line %d: illegal '%s'\n", line, yytext ? yytext : "");
-    last_b_error_line = line;
   }
 }
