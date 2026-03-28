@@ -6,6 +6,8 @@ void yyerror(const char *s);
 int yylex(void);
 extern char* yytext;
 extern int yylineno;
+extern YYLTYPE yylloc;
+static int last_b_error_line = -1;
 
 struct node {
     char *token;
@@ -127,6 +129,10 @@ ExtDef:
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
+      }
+    | Specifier error SEMI    
+      {
+          yyerrok; 
       }
     ;
 
@@ -287,6 +293,10 @@ CompSt:
           add_child($$, $3);
           add_child($$, $4);
       }
+    | LC error RC  
+      { 
+          yyerrok; 
+      }
     ;
 
 StmtList:
@@ -363,6 +373,26 @@ Stmt:
           add_child($$, $4);
           add_child($$, $5);
       }
+    | error SEMI              
+      { 
+          yyerrok; 
+      }
+    | RETURN error SEMI       
+      { 
+          yyerrok; 
+      }
+    | IF LP error RP Stmt %prec LOWER_THAN_ELSE 
+      { 
+          yyerrok; 
+      }
+    | IF LP error RP Stmt ELSE Stmt 
+      { 
+          yyerrok; 
+      }
+    | WHILE LP error RP Stmt  
+      { 
+          yyerrok; 
+      }
     ;
 
 /* Local Definitions */
@@ -387,6 +417,10 @@ Def:
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
+      }
+    | Specifier error SEMI    
+      { 
+          yyerrok; 
       }
     ;
 
@@ -589,5 +623,12 @@ Args:
 %%
 
 void yyerror(const char *s) {
-  fprintf(stdout, "Error type B at Line %d: illegal '%s'\n", yylloc.first_line, yytext ? yytext : "");
+  int line = yylloc.first_line;
+  if (line <= 0) {
+    line = yylineno;
+  }
+  if (line != last_b_error_line) {
+    fprintf(stdout, "Error type B at Line %d: illegal '%s'\n", line, yytext ? yytext : "");
+    last_b_error_line = line;
+  }
 }
