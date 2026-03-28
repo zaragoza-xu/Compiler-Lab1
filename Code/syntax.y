@@ -2,20 +2,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define min(a,b) (((a) < (b)) ? (a) : (b))
 void yyerror(const char *s);
 int yylex(void);
 extern char* yytext;
 extern int yylineno;
-extern YYLTYPE yylloc;
 static int last_b_error_line = -1;
+static int has_syntax_error = 0;
+extern int has_lexical_error;
 
 struct node {
     char *token;
-    char *name;
+    char *text;
     struct node *children[10]; /* 假设每个节点最多有10个子节点 */
     int child_count;
     int line_no; /* 行号 */
 };
+
+#include "lex.yy.c"
 
 static struct node *create_node(const char *symbol_name, int line_no) {
   struct node *n = (struct node *)malloc(sizeof(struct node));
@@ -23,27 +28,15 @@ static struct node *create_node(const char *symbol_name, int line_no) {
     return NULL;
   }
   n->token = strdup(symbol_name);
-  n->name = strdup(symbol_name);
   n->child_count = 0;
   n->line_no = line_no;
   return n;
 }
 
-static void ensure_token(struct node *n, const char *symbol_name) {
-  if (!n) {
-    return;
-  }
-  if (!n->token) {
-    n->token = strdup(symbol_name);
-  }
-  if (!n->name) {
-    n->name = strdup(symbol_name);
-  }
-}
-
 static void add_child(struct node *parent, struct node *child) {
   if (parent && child && parent->child_count < 10) {
     parent->children[parent->child_count++] = child;
+    parent->line_no = min(parent->line_no, child->line_no);
     }
 }
 
@@ -51,7 +44,26 @@ static struct node *make_nonterminal(const char *symbol_name) {
   return create_node(symbol_name, yylineno);
 }
 
-#include "lex.yy.c"
+static void print_tree(struct node *n, int indent) {
+  if (!n) return;
+  for (int i = 0; i < indent; i++) {
+    printf("  ");
+  }
+  if (n->text) {
+    if (strcmp(n->text, "") != 0) {
+      printf("%s: %s\n", n->token, n->text);
+    } else {
+      printf("%s\n", n->token);
+    }
+  } else {
+    printf("%s (%d)\n", n->token, n->line_no);
+  }
+  for (int i = 0; i < n->child_count; i++) {
+    print_tree(n->children[i], indent + 1);
+  }
+}
+
+
 %}
 %union{
   struct node *n;
@@ -91,6 +103,9 @@ Program:
       {
           $$ = make_nonterminal("Program");
           add_child($$, $1);
+          if (!has_syntax_error && !has_lexical_error) {
+            print_tree($$, 0); /* 打印语法树，缩进级别从0开始 */
+          }
       }
     ;
 
@@ -103,7 +118,7 @@ ExtDefList:
       }
     | /* empty */
       {
-          $$ = make_nonterminal("ExtDefList");
+          $$ = NULL;
       }
     ;
 
@@ -111,7 +126,6 @@ ExtDef:
       Specifier ExtDecList SEMI
       {
           $$ = make_nonterminal("ExtDef");
-          ensure_token($3, "SEMI");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -119,7 +133,6 @@ ExtDef:
     | Specifier SEMI
       {
           $$ = make_nonterminal("ExtDef");
-          ensure_token($2, "SEMI");
           add_child($$, $1);
           add_child($$, $2);
       }
@@ -145,7 +158,6 @@ ExtDecList:
     | VarDec COMMA ExtDecList
       {
           $$ = make_nonterminal("ExtDecList");
-          ensure_token($2, "COMMA");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -157,7 +169,6 @@ Specifier:
       TYPE
       {
           $$ = make_nonterminal("Specifier");
-          ensure_token($1, "TYPE");
           add_child($$, $1);
       }
     | StructSpecifier
@@ -171,9 +182,6 @@ StructSpecifier:
       STRUCT OptTag LC DefList RC
       {
           $$ = make_nonterminal("StructSpecifier");
-          ensure_token($1, "STRUCT");
-          ensure_token($3, "LC");
-          ensure_token($5, "RC");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -183,7 +191,6 @@ StructSpecifier:
     | STRUCT Tag
       {
           $$ = make_nonterminal("StructSpecifier");
-          ensure_token($1, "STRUCT");
           add_child($$, $1);
           add_child($$, $2);
       }
@@ -193,12 +200,11 @@ OptTag:
       ID
       {
           $$ = make_nonterminal("OptTag");
-          ensure_token($1, "ID");
           add_child($$, $1);
       }
     | /* empty */
       {
-          $$ = make_nonterminal("OptTag");
+          $$ = NULL;
       }
     ;
 
@@ -206,7 +212,6 @@ Tag:
       ID
       {
           $$ = make_nonterminal("Tag");
-          ensure_token($1, "ID");
           add_child($$, $1);
       }
     ;
@@ -216,15 +221,11 @@ VarDec:
       ID
       {
           $$ = make_nonterminal("VarDec");
-          ensure_token($1, "ID");
           add_child($$, $1);
       }
     | VarDec LB INT RB
       {
           $$ = make_nonterminal("VarDec");
-          ensure_token($2, "LB");
-          ensure_token($3, "INT");
-          ensure_token($4, "RB");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -236,9 +237,6 @@ FunDec:
       ID LP VarList RP
       {
           $$ = make_nonterminal("FunDec");
-          ensure_token($1, "ID");
-          ensure_token($2, "LP");
-          ensure_token($4, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -247,9 +245,6 @@ FunDec:
     | ID LP RP
       {
           $$ = make_nonterminal("FunDec");
-          ensure_token($1, "ID");
-          ensure_token($2, "LP");
-          ensure_token($3, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -260,7 +255,6 @@ VarList:
       ParamDec COMMA VarList
       {
           $$ = make_nonterminal("VarList");
-          ensure_token($2, "COMMA");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -286,14 +280,12 @@ CompSt:
       LC DefList StmtList RC
       {
           $$ = make_nonterminal("CompSt");
-          ensure_token($1, "LC");
-          ensure_token($4, "RC");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
           add_child($$, $4);
       }
-    | LC error RC  
+    | LC DefList error RC  
       { 
           yyerrok; 
       }
@@ -308,7 +300,7 @@ StmtList:
       }
     | /* empty */
       {
-          $$ = make_nonterminal("StmtList");
+          $$ = NULL;
       }
     ;
 
@@ -316,7 +308,6 @@ Stmt:
       Exp SEMI
       {
           $$ = make_nonterminal("Stmt");
-          ensure_token($2, "SEMI");
           add_child($$, $1);
           add_child($$, $2);
       }
@@ -328,8 +319,6 @@ Stmt:
     | RETURN Exp SEMI
       {
           $$ = make_nonterminal("Stmt");
-          ensure_token($1, "RETURN");
-          ensure_token($3, "SEMI");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -337,9 +326,6 @@ Stmt:
     | IF LP Exp RP Stmt %prec LOWER_THAN_ELSE
       {
           $$ = make_nonterminal("Stmt");
-          ensure_token($1, "IF");
-          ensure_token($2, "LP");
-          ensure_token($4, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -349,10 +335,6 @@ Stmt:
     | IF LP Exp RP Stmt ELSE Stmt
       {
           $$ = make_nonterminal("Stmt");
-          ensure_token($1, "IF");
-          ensure_token($2, "LP");
-          ensure_token($4, "RP");
-          ensure_token($6, "ELSE");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -364,9 +346,6 @@ Stmt:
     | WHILE LP Exp RP Stmt
       {
           $$ = make_nonterminal("Stmt");
-          ensure_token($1, "WHILE");
-          ensure_token($2, "LP");
-          ensure_token($4, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -405,7 +384,7 @@ DefList:
       }
     | /* empty */
       {
-          $$ = make_nonterminal("DefList");
+          $$ = NULL;
       }
     ;
 
@@ -413,7 +392,6 @@ Def:
       Specifier DecList SEMI
       {
           $$ = make_nonterminal("Def");
-          ensure_token($3, "SEMI");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -433,7 +411,6 @@ DecList:
     | Dec COMMA DecList
       {
           $$ = make_nonterminal("DecList");
-          ensure_token($2, "COMMA");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -449,7 +426,6 @@ Dec:
     | VarDec ASSIGNOP Exp
       {
           $$ = make_nonterminal("Dec");
-          ensure_token($2, "ASSIGNOP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -461,7 +437,6 @@ Exp:
       Exp ASSIGNOP Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "ASSIGNOP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -469,7 +444,6 @@ Exp:
     | Exp AND Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "AND");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -477,7 +451,6 @@ Exp:
     | Exp OR Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "OR");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -485,7 +458,6 @@ Exp:
     | Exp RELOP Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "RELOP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -493,7 +465,6 @@ Exp:
     | Exp PLUS Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "PLUS");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -501,7 +472,6 @@ Exp:
     | Exp MINUS Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "MINUS");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -509,7 +479,6 @@ Exp:
     | Exp STAR Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "STAR");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -517,7 +486,6 @@ Exp:
     | Exp DIV Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "DIV");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -525,8 +493,6 @@ Exp:
     | LP Exp RP
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "LP");
-          ensure_token($3, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -534,23 +500,18 @@ Exp:
     | MINUS Exp %prec UMINUS  /* 取负运算，依赖前面声明的优先级 */
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "MINUS");
           add_child($$, $1);
           add_child($$, $2);
       }
     | NOT Exp
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "NOT");
           add_child($$, $1);
           add_child($$, $2);
       }
     | ID LP Args RP
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "ID");
-          ensure_token($2, "LP");
-          ensure_token($4, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -559,9 +520,6 @@ Exp:
     | ID LP RP
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "ID");
-          ensure_token($2, "LP");
-          ensure_token($3, "RP");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -569,8 +527,6 @@ Exp:
     | Exp LB Exp RB
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "LB");
-          ensure_token($4, "RB");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -579,8 +535,6 @@ Exp:
     | Exp DOT ID
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($2, "DOT");
-          ensure_token($3, "ID");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -588,19 +542,16 @@ Exp:
     | ID
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "ID");
           add_child($$, $1);
       }
     | INT
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "INT");
           add_child($$, $1);
       }
     | FLOAT
       {
           $$ = make_nonterminal("Exp");
-          ensure_token($1, "FLOAT");
           add_child($$, $1);
       }
     ;
@@ -609,7 +560,6 @@ Args:
       Exp COMMA Args
       {
           $$ = make_nonterminal("Args");
-          ensure_token($2, "COMMA");
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
@@ -623,6 +573,7 @@ Args:
 %%
 
 void yyerror(const char *s) {
+  has_syntax_error = 1;
   int line = yylloc.first_line;
   if (line <= 0) {
     line = yylineno;
