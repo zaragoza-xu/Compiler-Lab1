@@ -17,6 +17,16 @@ static struct node *make_token_node(const char *symbol_name) {
 }
 
 int yycolumn = 1;
+static int last_a_error_line = -1;
+
+static void report_type_a_error(const char *kind, const char *text) {
+    if (yylineno == last_a_error_line) {
+        return;
+    }
+    fprintf(stdout, "Error type A at Line %d: illegal %s '%s'\n", yylineno, kind, text);
+    last_a_error_line = yylineno;
+}
+
 #define YY_USER_ACTION \
     yylloc.first_line = yylloc.last_line = yylineno; \
     yylloc.first_column = yycolumn; \
@@ -45,9 +55,9 @@ ID          [a-zA-Z_][a-zA-Z0-9_]*
     /* 空白字符处理 */
 [ \t\r]+  { /* 忽略空白符 */ }
 \n {yycolumn = 1;}
-    /* 注释处理 [cite: 165, 166] */
-"//".* { /* 单行注释 */ }
-"/*"([^\*]|\*+[^/\*])*\*+"/" { /* 多行注释，无嵌套 */ }
+    /* 注释处理: 注释在本实验中视为词法错误 */
+"//".* { report_type_a_error("comment", yytext); }
+"/*"([^\*]|\*+[^/\*])*\*+"/" { report_type_a_error("comment", yytext); }
 
     /* 关键字与类型 [cite: 22, 29, 30, 31, 32, 33] */
 "int"|"float" { yylval.n = make_token_node("TYPE"); return TYPE; }
@@ -58,12 +68,12 @@ ID          [a-zA-Z_][a-zA-Z0-9_]*
 "while"     { yylval.n = make_token_node("WHILE"); return WHILE; }
 
     /* 常数与标识符识别 */
-{ILLEGAL_FLOAT_LEADING_ZERO} { fprintf(stdout, "Error type A at Line %d: illegal number '%s'\n", yylineno, yytext); }
+{ILLEGAL_FLOAT_LEADING_ZERO} { report_type_a_error("number", yytext); }
 {DEC_INT}   { yylval.n = make_token_node("INT"); return INT; }
 {OCT_INT}   { yylval.n = make_token_node("INT"); return INT; }
 {HEX_INT}   { yylval.n = make_token_node("INT"); return INT; }
 {FLOAT_NORM} { yylval.n = make_token_node("FLOAT"); return FLOAT; }
-{FLOAT_EXP} { yylval.n = make_token_node("FLOAT"); return FLOAT; }
+{FLOAT_EXP} { report_type_a_error("number", yytext); }
 {ID}        { yylval.n = make_token_node("ID"); return ID; }
 
     /* 标点符号与运算符 [cite: 10-28] */
@@ -86,5 +96,5 @@ ID          [a-zA-Z_][a-zA-Z0-9_]*
 "{"         { yylval.n = make_token_node("LC"); return LC; }
 "}"         { yylval.n = make_token_node("RC"); return RC; }
 
-.           { fprintf(stdout, "Error type A at Line %d: illegal token '%s'\n", yylineno, yytext); }
+.           { report_type_a_error("token", yytext); }
 %%
