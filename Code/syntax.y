@@ -3,10 +3,20 @@
 #include "lex.yy.c"
 void yyerror(const char *s);
 int yylex(void);
+extern char* yytext;
+extern YYLTYPE yylloc;
 %}
+%union{
+  int type_int;
+  float type_float;
+  double type_double;
+}
 
+%locations
 /* 声明终结符 (Tokens) */
-%token INT FLOAT ID
+%token <type_int>INT
+%token <type_float>FLOAT
+%token ID
 %token TYPE STRUCT RETURN IF ELSE WHILE
 %token SEMI COMMA ASSIGNOP RELOP PLUS MINUS STAR DIV
 %token AND OR DOT NOT LP RP LB RB LC RC
@@ -157,5 +167,5 @@ Args:
 %%
 
 void yyerror(const char *s) {
-    /* 错误处理逻辑 */
+  fprintf(stdout, "Error type B at Line %d: illegal '%s'\n", yylloc.first_line, yytext ? yytext : "");
 }
