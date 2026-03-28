@@ -50,16 +50,22 @@ static void set_float_token_node(const char *lexeme) {
 }
 
 int yycolumn = 1;
-static int last_a_error_line = -1;
-int has_lexical_error = 0;
+
+int last_reported_error_line = -1;
+
+int mark_reported_error_line(int line) {
+    if (line == last_reported_error_line) {
+        return 0;
+    }
+    last_reported_error_line = line;
+    return 1;
+}
 
 static void report_type_a_error(const char *kind, const char *text) {
-    has_lexical_error = 1;
-    if (yylineno == last_a_error_line) {
+    if (!mark_reported_error_line(yylineno)) {
         return;
     }
     fprintf(stdout, "Error type A at Line %d: illegal %s '%s'\n", yylineno, kind, text);
-    last_a_error_line = yylineno;
 }
 
 #define YY_USER_ACTION \
