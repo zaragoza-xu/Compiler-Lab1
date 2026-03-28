@@ -45,7 +45,7 @@ static void set_float_token_node(const char *lexeme) {
         return;
     }
 
-    snprintf(buf, sizeof(buf), "%.17g", value);
+    snprintf(buf, sizeof(buf), "%.6f", value);
     yylval.n = make_token_node("FLOAT", buf);
 }
 

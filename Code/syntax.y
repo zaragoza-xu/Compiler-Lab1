@@ -103,7 +103,8 @@ Program:
       {
           $$ = make_nonterminal("Program");
           add_child($$, $1);
-          if (!has_syntax_error && !has_lexical_error) {
+          if (!has_syntax_error && !has_lexical_error)
+          {
             print_tree($$, 0); /* 打印语法树，缩进级别从0开始 */
           }
       }
@@ -248,6 +249,14 @@ FunDec:
           add_child($$, $1);
           add_child($$, $2);
           add_child($$, $3);
+      }
+    | ID LP error RP
+      {
+          $$ = make_nonterminal("FunDec");
+          add_child($$, $1);
+          add_child($$, $2);
+          add_child($$, $4);
+          yyerrok;
       }
     ;
 
